@@ -1,9 +1,8 @@
-#Create raster stack of climatic variables (preditors) 
-#As mentioned this can be sourced from the package and 
-#raster functions can be used to clip them the your area
-#of interest
+#Create a raster stack of climatic variables (preditors) 
+#These can be extracted from Worldclim and raster functions 
+#can be used to clip them to your area of interest
 
-bioclims <- list.files(path="E://GisModelling/ClimateChange_input/Current_1970-2000/tiffs/", pattern = "tif$", full.names = TRUE)
+bioclims <- list.files(path="E://GisModelling/ClimateChange_input/Current_1970-2000/tiffs/", pattern = "tif$", full.names = TRUE) #predictors source
 predictors <- raster::stack(bioclims)
 #Check the predictors included in the stack:
 names(predictors)
@@ -16,7 +15,7 @@ plot(countries, add=TRUE) + points(ibis_fil1, col='black')
 #Assess autocorrelation in response and predictor datasets####
 #The blockCV package allows for assessment of the autocorrelation range 
 #of predictors using spatial blocks, variograms and random points.
-#alternatively pearson_correlation_matrix within the sdmpredictors package can be used.
+#Alternatively pearson_correlation_matrix within the sdmpredictors package can be used.
 
 library(blockCV)
 library(sdmpredictors)
@@ -28,9 +27,10 @@ auto_predict <- spatialAutoRange(rasterLayer = predictors,sampleNumber = 5000,
 summary(auto_predict)
 plot(auto_predict$variograms[[1]])
 
-#pearson_correlation_matrix(predictors, cachesize = 20, same_mask = FALSE)
+#Alternative:
+pearson_correlation_matrix(predictors, cachesize = 20, same_mask = FALSE)
 
-#remove any highly autocorrelated layers (predictors) if needed:
+#Remove any highly autocorrelated layers (predictors) if needed:
 predictors <- dropLayer(predictors, c(1, 3, 4, 6, 9, 11))
 #Check predictors remaining in the raster stack:
 names(predictors)
@@ -49,13 +49,13 @@ str(sdmdata)
 #Check number of presence and backgorud points
 table(sdmdata$pb)
 
-#visually investigate colinearity in dataset to see if the blockCv autocorrelation 
-#excerise was efficient at addressing this
+#visually investigate collinearity in the dataset to see if the blockCv  
+#autocorrelation process was efficient at correcting this
 pairs(sdmdata[,2:5], cex=0.1, fig=TRUE)
 
 ###Spatial blocking can be used to further control for autocorrelation.
-#Spatial blocl grids can be used within both Maxent and Biomod2 modelling frameworks
-#Conduct spatial blocking (See blockCv for further details): 
+#Spatial block grids can be used within both Maxent and Biomod2 modelling frameworks
+#Conduct spatial blocking (See blockCV for further details): 
 spatialblock1 <- spatialBlock(speciesData = pb_data, # sysematic blocking
                     species = "Species",
                     rasterLayer = predictors,
@@ -72,19 +72,19 @@ spatialblock2 <- spatialBlock(speciesData = pa_data, # checkerboard blocking
                     selection = "checkerboard",
                     biomod2Format = TRUE)
 
-enviroblock <- envBlock(rasterLayer = predictors, #Environemental blocking
+enviroblock <- envBlock(rasterLayer = predictors, #environemental blocking
                speciesData = pb_data,
                species = "Species",
                k = 10,
-               standardization = "standard", # rescale variables between 0 and 1
+               standardization = "standard", #for rescaling variables
                rasterBlock = FALSE,
                numLimit = 50)
 
 #Alternatively, you can manually scale through block sizes:
 rangeExplorer(rasterLayer = predictors,
-              speciesData = pb_data, # response data (optional)
-              species = "Species", # the responcse column (optional)
-              minRange = 30000, # limit the search domain
+              speciesData = pb_data, #presence-absence dataset
+              species = "Species", #presence-absence data column
+              minRange = 30000, 
               maxRange = 100000)
 
 #Building SDM models####
@@ -109,8 +109,8 @@ BiomodData
 plot(BiomodData)
 
 #Definfing the folds to be used in model runs: 
-#use blockCV output here
-DataSplitTable <- enviroblock$biomodTable
+#Use blockCV output here
+DataSplitTable <- enviroblock$biomodTable #link it to the blocking type that worked best
 
 #running multiple algorithms to build SDMs 
 BiomodOption <- BIOMOD_ModelingOptions()
@@ -120,7 +120,7 @@ BiomodModelOut <- BIOMOD_Modeling(
   models.options = BiomodOption,
   NbRunEval=3,
   DataSplitTable = DataSplitTable, # blocking folds
-  DataSplit=75,
+  DataSplit=75, #Train and test split [exclude validation dataset if possible]
   Prevalence=0.5,
   VarImport=3,
   models.eval.meth = c('TSS','ROC'),
@@ -158,7 +158,7 @@ BiomodEM
 get_evaluations(BiomodEM)
 
 #Best practice should include ca. 10% data points withheld for 
-#model validation. This can be run in the following script.
+#model validation. This can be run script 3. 
 
 #Future climate change projections####
 #Using the above models built for the species, we can project it from current
@@ -167,10 +167,13 @@ get_evaluations(BiomodEM)
 
 #Create raster stack representing furture scenarios
 #Although this can also be sourced through the package, newer simulations
-#are available from WorldClim directly
-bioclims_fut <- list.files(path="E://GisModelling/ClimateChange_input/Future_2020-2040/tiffs/", pattern = "tif$", full.names = TRUE)
+#are available from WorldClim directly.
+bioclims_fut <- list.files(path="E://GisModelling/ClimateChange_input/Future_2020-2040/tiffs/", pattern = "tif$", full.names = TRUE) #future predictors source 
 predictors_fut <- raster::stack(bioclims_fut)
+#Good practice could inlcude projecting to more than one GCM for the same time period, and creating an mean output of the outputs. 
+#This could eliminate any anomalies found within individual climate models.
 
+#Project based on future climate scenarios 
 BiomodProjFuture <- BIOMOD_Projection(
   modeling.output = BiomodModelOut,
   new.env = predictors_fut,
